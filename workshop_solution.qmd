@@ -1,0 +1,265 @@
+---
+title: "From Field to Figure: A Beginner’s Guide to Taming Messy Ecological Data in R"
+author: "Annie Adams"
+format: html
+---
+
+
+# Welcome!
+
+In this workshop, we'll work through a real ecological dataset from start to finish — importing raw government data, cleaning it into a tidy format, and building a visualization — all using the **Tidyverse**.
+
+Before we start, let's quickly review some of the R basics. 
+
+# R Overview
+
+### R layout
+
+Your R environment consists of four different panes: 
+
+- **Source:** The pane that we are currently reading this text in! This is where you can view and edit various code-related files. 
+- **Console:** Where you can interactively execute code and access the terminal.
+- **Environment:** Displays current R/Python objects from your current working session.
+- **Output:** Displays various outputs such as plots, HTML content, or on-disk files. It contains the Files, Plots, R Packages, Help, Tutorial, Viewer, and Presentation tabs.
+
+### Creating a code chunk 
+You can use the following keyboard shortcut to create a code chunk: 
+
+- **Mac:** `Command + Option + I`
+- **PC:** `Ctrl + Alt + I`
+
+You can also manually add a code chunk the with green box with a C in it, at the top of your source pane!
+
+Outside code chunks, you can include markdown text, just like this! 
+
+
+
+### Running Code 
+To execute your code, you can use either a keyboard shortcut, the Run button at the top of the source pane, or the play button at the top of an individual code chunk. 
+
+- **Mac:** `Option + Return`
+- **PC:** `Ctrl + Enter`
+
+
+
+
+# Data Overview
+
+This dataset comes from the [USDA National Agricultural Statistics Service (NASS)](https://www.nass.usda.gov/), which surveys beekeepers across the U.S. to track colony health. It records the percentage of honeybee colonies affected by various stressors — such as Varroa mites, diseases, and pesticides — broken down by state and quarter.
+
+The dataset was intentionally "messified" for teaching purposes, introducing common real-world issues like inconsistent capitalization, USDA placeholder codes, and wide-format layout.
+
+| Column | Description |
+|---|---|
+| `State` | U.S. state name (inconsistently cased) |
+| `Quarter` | Survey quarter (e.g., `Q1_2024`) |
+| `Period` | Text description of the quarter |
+| `Varroa mites (%)` | % of colonies affected by Varroa mites |
+| `Other pests/parasites (%)` | % affected by other pests or parasites |
+| `Diseases (%)` | % affected by diseases |
+| `Pesticides (%)` | % affected by pesticides |
+| `Other (%)` | % affected by other causes |
+| `Unknown (%)` | % affected by unknown causes |
+
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+stressors_messy <- read_csv(here::here("data", "honeybee_stressors_messy.csv"))
+```
+Now let's see what our messy data looks like:
+
+```{r}
+glimpse(stressors_messy)
+```
+
+```{r}
+head(stressors_messy)
+```
+
+
+# Data Cleaning 
+
+Data cleaning is where you'll spend most of your time in any real analysis. The good news: the Tidyverse makes it readable and even enjoyable with the **pipe operator** `|>`.
+
+## The Pipe: Your New Best Friend
+
+The pipe (`|>`) takes the output of one function and feeds it as the first argument to the next function. It lets us chain transformations that read like a recipe:
+
+```{r}
+
+# Without the pipe (nested, hard to read):
+head(sort(unique(stressors_messy$State)))
+
+# With the pipe (step by step, easy to read):
+stressors_messy$State |>
+  unique() |>
+  sort() |>
+  head()
+```
+
+Both produce the same result, but the piped version reads top-to-bottom — just like a set of instructions.
+
+
+## Step 1: Rename Columns
+
+Our column names have spaces and parentheses. In R, that means we have to wrap them in backticks every time we reference them — annoying and error-prone. Let's give them clean, short, `snake_case` names with `rename()`:
+
+
+```{r}
+stressors <- stressors_messy |>
+  rename(
+    state        = State,
+    quarter      = Quarter,
+    period       = Period,
+    varroa_mites = `Varroa mites (%)`,
+    other_pests  = `Other pests/parasites (%)`,
+    diseases     = `Diseases (%)`,
+    pesticides   = `Pesticides (%)`,
+    other        = `Other (%)`,
+    unknown      = `Unknown (%)`
+  )
+```
+
+## Step 2: Fix Inconsistent State Names
+
+Some state names are ALL CAPS, some are lowercase.
+
+```{r}
+stressors |>
+  distinct(state) |>
+  arrange(state) 
+```
+
+We can see entries like `"CALIFORNIA"`, `"michigan"`, and `"TEXAS"` — all referring to states that should have consistent Title Case names. We'll use `mutate()` to modify a column and `str_to_title()` to convert our strings to title case. 
+
+```{r}
+stressors <- stressors |>
+  mutate(
+    state = str_to_title(state))
+
+```
+
+
+## Step 3: Replace Codes and Convert to Numbers
+
+The USDA uses `(Z)` for values near zero and `-` for zero. We need to replace these before converting to numbers. `str_replace_all()` swaps text patterns, and `parse_number()` converts text like `"910,000"` into the number `910000`:
+
+```{r}
+stressors <- stressors |>
+  mutate(
+    across(varroa_mites:unknown, function(x) str_replace_all(x, "\\(Z\\)", "0")),
+    across(varroa_mites:unknown, function(x) str_replace_all(x, "^-$", "0")),
+    across(varroa_mites:unknown, parse_number)
+  )
+
+glimpse(stressors)
+```
+The columns are now numeric! 
+
+## Step 4: Filter to 2024 and Select Columns
+
+We use `filter()` to keep only 2024 rows, `select()` to drop columns we don't need, and `case_when()` to create readable quarter labels:
+
+```{r}
+stressors <- stressors |>
+  filter(str_detect(quarter, "2024"),
+         !state %in% c("United States", "Other States")) |>
+  mutate(quarter_label = case_when(
+    quarter == "Q1_2024" ~ "Jan–Mar",
+    quarter == "Q2_2024" ~ "Apr–Jun",
+    quarter == "Q3_2024" ~ "Jul–Sep",
+    quarter == "Q4_2024" ~ "Oct–Dec"
+  )) |>
+  select(-period, -quarter)
+
+glimpse(stressors)
+```
+
+
+## Step 5: Pivot Stressor Data to Long Format
+
+The stressor data has one column per stressor type — this is called **wide format**. For plotting, we need **long format**: one row per observation. `pivot_longer()` reshapes it:
+
+```{r}
+stressors_long <- stressors |>
+  pivot_longer(
+    cols = varroa_mites:unknown,
+    names_to = "stressor",
+    values_to = "pct_affected"
+  ) |>
+  mutate(stressor = str_to_title(str_replace_all(stressor, "_", " ")))
+
+head(stressors_long)
+```
+
+Our 6 stressor columns became two: `stressor` and `pct_affected`. Each row is now a single observation — this is **tidy data**.
+
+
+## Data Visualization 
+
+`ggplot2` builds plots in layers: data, geometry (what to draw), and labels.
+
+The basic template looks like this:
+
+```r
+ggplot(data = data, aes(x = x, y = y)) +
+  geom_type()
+```
+
+Let's build a visualization step by step.
+
+## Plot 1: National Average by Stressor
+
+First, let's summarize the data to get the **national average** percentage affected by each stressor across all states and quarters:
+
+```{r}
+stressor_summary <- stressors_long |>
+  group_by(stressor) |>
+  summarise(mean_pct = mean(pct_affected, na.rm = TRUE)) |>
+  arrange(desc(mean_pct))
+
+stressor_summary
+```
+
+Now let's plot it as a bar chart. We use `reorder()` to sort bars from highest to lowest:
+
+```{r}
+ggplot(stressor_summary, aes(x = reorder(stressor, mean_pct), y = mean_pct)) +
+  geom_col(fill = "forestgreen") +
+  coord_flip() +
+  labs(
+    title = "Average Percentage of U.S. Honeybee \n Colonies Affected  by Stressor (2024)",
+    subtitle = "Varroa Mites is the leading stressor",
+    x = NULL,
+    y = "Average % of Colonies Affected",
+    caption = "Source: USDA NASS Honeybee Colony Survey"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 12))
+```
+
+
+
+# Workshop Review
+
+Let's recap what we covered today:
+
+- **Importing** raw CSV data with `read_csv()`
+- **Renaming** columns to `snake_case` with `rename()`
+- **Standardizing** text with `str_to_title()` and `mutate()`
+- **Replacing** USDA placeholder codes and converting to numeric with `str_replace_all()` and `parse_number()`
+- **Filtering** and **selecting** rows and columns with `filter()` and `select()`
+- **Reshaping** from wide to long format with `pivot_longer()`
+- **Summarizing** grouped data with `group_by()` and `summarise()`
+- **Visualizing** data with `ggplot2` using bar charts
+
+The Tidyverse is a toolkit — each function does one thing well, and the pipe `|>` lets you chain them into readable, reproducible workflows. The more you practice this pattern, the more natural it becomes.
+
+**Resources to keep learning:**
+
+- [R for Data Science (free online)](https://r4ds.hadley.nz/) — the definitive Tidyverse textbook
+- [ggplot2 cheatsheet](https://posit.co/wp-content/uploads/2022/10/data-visualization-1.pdf)
+- [Tidyverse documentation](https://www.tidyverse.org/)

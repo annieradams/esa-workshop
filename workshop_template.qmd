@@ -1,6 +1,6 @@
 ---
 title: "From Field to Figure: A Beginner’s Guide to Taming Messy Ecological Data in R"
-author: "Annie Adams"
+author: ""
 format: html
 ---
 
@@ -64,20 +64,21 @@ The dataset was intentionally "messified" for teaching purposes, introducing com
 
 ```{r}
 library(tidyverse)
-library(ggplot2)
 ```
 
 ```{r}
-stressors_messy <- read_csv(here::here("data", "honeybee_stressors_messy.csv"))
+stressors_messy <- 
 ```
 Now let's see what our messy data looks like:
 
 ```{r}
-glimpse(stressors_messy)
+
+
 ```
 
 ```{r}
-head(stressors_messy)
+
+
 ```
 
 
@@ -110,7 +111,7 @@ Our column names have spaces and parentheses. In R, that means we have to wrap t
 
 
 ```{r}
-stressors <- stressors_messy |>
+
   rename(
     state        = State,
     quarter      = Quarter,
@@ -121,7 +122,7 @@ stressors <- stressors_messy |>
     pesticides   = `Pesticides (%)`,
     other        = `Other (%)`,
     unknown      = `Unknown (%)`
-  )
+  ) |>
 ```
 
 ## Step 2: Fix Inconsistent State Names
@@ -129,34 +130,23 @@ stressors <- stressors_messy |>
 Some state names are ALL CAPS, some are lowercase.
 
 ```{r}
-stressors |>
-  distinct(state) |>
-  arrange(state) 
+
 ```
 
 We can see entries like `"CALIFORNIA"`, `"michigan"`, and `"TEXAS"` — all referring to states that should have consistent Title Case names. We'll use `mutate()` to modify a column and `str_to_title()` to convert our strings to title case. 
 
 ```{r}
-stressors <- stressors |>
-  mutate(
-    state = str_to_title(state))
 
 ```
 
 
 ## Step 3: Replace Codes and Convert to Numbers
 
-The USDA uses `(X)` for not applicable, `(Z)` for values near zero, and `-` for zero. We need to replace these before converting to numbers. `str_replace_all()` swaps text patterns, and `parse_number()` converts text like `"910,000"` into the number `910000`:
+
+The USDA uses `(Z)` for values near zero and `-` for zero. We need to replace these before converting to numbers. `str_replace_all()` swaps text patterns, and `parse_number()` converts text like `"910,000"` into the number `910000`:
 
 ```{r}
-stressors <- stressors |>
-  mutate(
-    across(varroa_mites:unknown, \(x) str_replace_all(x, "\\(Z\\)", "0")),
-    across(varroa_mites:unknown, \(x) str_replace_all(x, "^-$", "0")),
-    across(varroa_mites:unknown, parse_number)
-  )
 
-glimpse(stressors)
 ```
 The columns are now numeric! 
 
@@ -165,18 +155,15 @@ The columns are now numeric!
 We use `filter()` to keep only 2024 rows, `select()` to drop columns we don't need, and `case_when()` to create readable quarter labels:
 
 ```{r}
-stressors <- stressors |>
-  filter(str_detect(quarter, "2024"),
-         !state %in% c("United States", "Other States")) |>
+
+
   mutate(quarter_label = case_when(
     quarter == "Q1_2024" ~ "Jan–Mar",
     quarter == "Q2_2024" ~ "Apr–Jun",
     quarter == "Q3_2024" ~ "Jul–Sep",
     quarter == "Q4_2024" ~ "Oct–Dec"
   )) |>
-  select(-period, -quarter)
 
-glimpse(stressors)
 ```
 
 
@@ -185,21 +172,13 @@ glimpse(stressors)
 The stressor data has one column per stressor type — this is called **wide format**. For plotting, we need **long format**: one row per observation. `pivot_longer()` reshapes it:
 
 ```{r}
-stressors_long <- stressors |>
-  pivot_longer(
-    cols = varroa_mites:unknown,
-    names_to = "stressor",
-    values_to = "pct_affected"
-  ) |>
-  mutate(stressor = str_to_title(str_replace_all(stressor, "_", " ")))
 
-head(stressors_long)
 ```
 
 Our 6 stressor columns became two: `stressor` and `pct_affected`. Each row is now a single observation — this is **tidy data**.
 
 
-## Data visualiztion ( 20 minutes )
+## Data Visualization 
 
 `ggplot2` builds plots in layers: data, geometry (what to draw), and labels.
 
@@ -217,59 +196,14 @@ Let's build a visualization step by step.
 First, let's summarize the data to get the **national average** percentage affected by each stressor across all states and quarters:
 
 ```{r}
-stressor_summary <- stressors_long |>
-  group_by(stressor) |>
-  summarise(mean_pct = mean(pct_affected, na.rm = TRUE)) |>
-  arrange(desc(mean_pct))
 
-stressor_summary
 ```
 
 Now let's plot it as a bar chart. We use `reorder()` to sort bars from highest to lowest:
 
 ```{r}
-ggplot(stressor_summary, aes(x = reorder(stressor, mean_pct), y = mean_pct)) +
-  geom_col(fill = "lightblue") +
-  coord_flip() +
-  labs(
-    title = "Average Percentage of U.S. Honeybee \n Colonies Affected  by Stressor (2024)",
-    subtitle = "Varroa Mites is the leading stressor",
-    x = NULL,
-    y = "Mean % of Colonies Affected",
-    caption = "Source: USDA NASS Honeybee Colony Survey"
-  ) +
-  theme_minimal() +
-  theme(plot.title = element_text(face = "bold", size = 12))
+
 ```
-
-
-## Plot 2: Stressor Trends Across Quarters
-
-Next, let's look at how stressor levels change across the four quarters of 2024. We'll compute national averages by stressor and quarter, then use `facet_wrap()` to make a small multiple plot — one panel per stressor:
-
-```{r}
-quarterly_summary <- stressors_long |>
-  filter(state == "California") |>
-  group_by(stressor, quarter_label) |>
-  mutate(quarter_label = factor(quarter_label, levels = c("Jan–Mar", "Apr–Jun", "Jul–Sep", "Oct–Dec")))
-
-ggplot(quarterly_summary, aes(x = quarter_label, y = pct_affected, group = stressor)) +
-  geom_line(color = "forestgreen", linewidth = 1) +
-  geom_point(color = "forestgreen", size = 2.5) +
-  facet_wrap(~ stressor, scales = "free_y") +
-  labs(
-    title = "California Honeybee Colony Stressor \n Levels by Quarter (2024)",
-    x = "Quarter",
-    y = "Mean % of Colonies Affected",
-    caption = "Source: USDA NASS Honeybee Colony Survey"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 30, hjust = 1)
-  )
-```
-
-`facet_wrap()` is incredibly useful — it splits a plot by a categorical variable so you can compare patterns side by side without cluttering a single panel.
 
 
 
@@ -284,7 +218,7 @@ Let's recap what we covered today:
 - **Filtering** and **selecting** rows and columns with `filter()` and `select()`
 - **Reshaping** from wide to long format with `pivot_longer()`
 - **Summarizing** grouped data with `group_by()` and `summarise()`
-- **Visualizing** data with `ggplot2` using bar charts, line plots, and facets
+- **Visualizing** data with `ggplot2` using bar charts
 
 The Tidyverse is a toolkit — each function does one thing well, and the pipe `|>` lets you chain them into readable, reproducible workflows. The more you practice this pattern, the more natural it becomes.
 
