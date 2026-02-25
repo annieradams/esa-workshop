@@ -63,11 +63,12 @@ The dataset was intentionally "messified" for teaching purposes, introducing com
 
 
 ```{r}
+install.packages("tidyverse")
 library(tidyverse)
 ```
 
 ```{r}
-stressors_messy <- read_csv(here::here("data", "honeybee_stressors_messy.csv"))
+stressors_messy <- read_csv("data/honeybee_stressors_messy.csv")
 ```
 Now let's see what our messy data looks like:
 
