@@ -209,6 +209,14 @@ ggplot(data = data, aes(x = x, y = y)) +
   geom_type()
 ```
 
+You can also pipe from your data directly. We will use this method!
+
+```r
+data %>% 
+ggplot(aes(x = x, y = y)) +
+  geom_type()
+```
+
 Let's build a visualization step by step.
 
 ## Plot 1: National Average by Stressor
