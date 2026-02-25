@@ -63,7 +63,9 @@ The dataset was intentionally "messified" for teaching purposes, introducing com
 
 
 ```{r}
+install.packages("tidyverse")
 library(tidyverse)
+
 ```
 
 ```{r}
