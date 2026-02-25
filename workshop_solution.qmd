@@ -190,8 +190,7 @@ stressors_long <- stressors |>
     cols = varroa_mites:unknown,
     names_to = "stressor",
     values_to = "pct_affected"
-  ) |>
-  mutate(stressor = str_to_title(str_replace_all(stressor, "_", " ")))
+  ) 
 
 head(stressors_long)
 ```
@@ -228,7 +227,9 @@ stressor_summary
 Now let's plot it as a bar chart. We use `reorder()` to sort bars from highest to lowest:
 
 ```{r}
-ggplot(stressor_summary, aes(x = reorder(stressor, mean_pct), y = mean_pct)) +
+stressor_summary %>% 
+    mutate(stressor = str_to_title(str_replace_all(stressor, "_", " "))) %>% 
+ggplot(aes(x = reorder(stressor, mean_pct), y = mean_pct)) +
   geom_col(fill = "forestgreen") +
   coord_flip() +
   labs(
